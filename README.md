@@ -1,4 +1,4 @@
-# The Compact - Principal Engineered Frontend
+# The Compact - Advanced Frontend
 
 A production-grade Next.js 16 application for interacting with Uniswap's **The Compact** protocol on the Sepolia Testnet. This implementation emphasizes architectural resilience, performance optimization, and superior developer experience.
 
@@ -7,7 +7,7 @@ A production-grade Next.js 16 application for interacting with Uniswap's **The C
 ![Tailwind](https://img.shields.io/badge/Tailwind-4-teal)
 ![Wagmi](https://img.shields.io/badge/Wagmi-2-orange)
 
-## 🚀 Key Architectural Highlights (PE Edition)
+## 🚀 Key Architectural Highlights
 
 - **🏛️ Decoupled Logic**: Business logic is strictly separated from the UI into specialized custom hooks (`useDeposit`, `useWithdraw`). Components are "thin" and focus only on layout.
 - **⚡ Performance First**: Strict usage of `useMemo`, `useCallback`, and `React.memo` to stabilize reference identities. This prevents expensive re-renders across the component tree during real-time interactions.
@@ -74,7 +74,7 @@ npm run dev
 
 ## 📜 Development Workflows
 
-As part of the Principal Engineer enhancements, we've included agentic workflows for reliability:
+We've included agentic workflows for reliability:
 
 - `/build-verify`: Ensures the project maintains a 100% buildable state with zero lint errors.
 

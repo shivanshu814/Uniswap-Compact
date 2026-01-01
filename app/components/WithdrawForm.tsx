@@ -1,20 +1,19 @@
 "use client";
 
-import { useState } from "react";
-import { formatEther, isAddress, parseEther } from "viem";
-import {
-    useAccount,
-    useReadContract,
-    useWaitForTransactionReceipt,
-    useWriteContract,
-} from "wagmi";
+import { ArrowUpFromLine, Clock, XCircle } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { formatEther } from "viem";
+import { useAccount, useReadContract } from "wagmi";
+import { useWithdraw } from "../hooks";
 import {
     FORCED_WITHDRAWAL_STATUS,
     RESET_PERIODS,
     SCOPES,
-    THE_COMPACT_ABI,
     THE_COMPACT_ADDRESS,
-} from "../config";
+    formatAddress
+} from "../utils";
+import { THE_COMPACT_ABI } from "../utils/abi";
+import { Button, Card, FormInput, TransactionProgress } from "./ui";
 
 export function WithdrawForm() {
     const { address, isConnected } = useAccount();
@@ -22,297 +21,225 @@ export function WithdrawForm() {
     const [withdrawAmount, setWithdrawAmount] = useState("");
     const [withdrawRecipient, setWithdrawRecipient] = useState("");
 
-    const { data: hash, writeContract, isPending, error } = useWriteContract();
+    const {
+        enableForcedWithdrawal,
+        disableForcedWithdrawal,
+        forcedWithdrawal,
+        isPending,
+        isSuccess
+    } = useWithdraw();
 
-    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-        hash,
-    });
-
-    // Read lock details
     const { data: lockDetails } = useReadContract({
-        address: THE_COMPACT_ADDRESS,
+        address: THE_COMPACT_ADDRESS as `0x${string}`,
         abi: THE_COMPACT_ABI,
         functionName: "getLockDetails",
         args: lockId ? [BigInt(lockId)] : undefined,
-        query: {
-            enabled: !!lockId,
-        },
+        query: { enabled: !!lockId },
     });
 
-    // Read balance
     const { data: balance } = useReadContract({
-        address: THE_COMPACT_ADDRESS,
+        address: THE_COMPACT_ADDRESS as `0x${string}`,
         abi: THE_COMPACT_ABI,
         functionName: "balanceOf",
         args: address && lockId ? [address, BigInt(lockId)] : undefined,
-        query: {
-            enabled: !!address && !!lockId,
-        },
+        query: { enabled: !!address && !!lockId },
     });
 
-    // Read forced withdrawal status
     const { data: withdrawalStatus } = useReadContract({
-        address: THE_COMPACT_ADDRESS,
+        address: THE_COMPACT_ADDRESS as `0x${string}`,
         abi: THE_COMPACT_ABI,
         functionName: "getForcedWithdrawalStatus",
         args: address && lockId ? [address, BigInt(lockId)] : undefined,
-        query: {
-            enabled: !!address && !!lockId,
-        },
+        query: { enabled: !!address && !!lockId },
     });
 
-    const handleEnableForcedWithdrawal = () => {
-        if (!lockId) return;
-        writeContract({
-            address: THE_COMPACT_ADDRESS,
-            abi: THE_COMPACT_ABI,
-            functionName: "enableForcedWithdrawal",
-            args: [BigInt(lockId)],
-        });
-    };
-
-    const handleDisableForcedWithdrawal = () => {
-        if (!lockId) return;
-        writeContract({
-            address: THE_COMPACT_ADDRESS,
-            abi: THE_COMPACT_ABI,
-            functionName: "disableForcedWithdrawal",
-            args: [BigInt(lockId)],
-        });
-    };
-
-    const handleForcedWithdrawal = () => {
-        if (!lockId || !withdrawAmount || !address) return;
-
-        const recipientAddr =
-            withdrawRecipient && isAddress(withdrawRecipient)
-                ? withdrawRecipient
-                : address;
-
-        writeContract({
-            address: THE_COMPACT_ADDRESS,
-            abi: THE_COMPACT_ABI,
-            functionName: "forcedWithdrawal",
-            args: [
-                BigInt(lockId),
-                recipientAddr as `0x${string}`,
-                parseEther(withdrawAmount),
-            ],
-        });
-    };
-
     const status = withdrawalStatus ? Number(withdrawalStatus[0]) : 0;
-    const withdrawableAt = withdrawalStatus
-        ? Number(withdrawalStatus[1])
-        : 0;
-    const canWithdraw = status === 2 || (status === 1 && Date.now() / 1000 >= withdrawableAt);
+    const withdrawableAt = withdrawalStatus ? Number(withdrawalStatus[1]) : 0;
+    const canWithdraw = useMemo(() => status === 2 || (status === 1 && Date.now() / 1000 >= withdrawableAt), [status, withdrawableAt]);
+
+    const handleEnable = useCallback(() => enableForcedWithdrawal(lockId), [enableForcedWithdrawal, lockId]);
+    const handleDisable = useCallback(() => disableForcedWithdrawal(lockId), [disableForcedWithdrawal, lockId]);
+    const handleForcedWithdrawal = useCallback(() => forcedWithdrawal(lockId, withdrawRecipient, withdrawAmount), [forcedWithdrawal, lockId, withdrawRecipient, withdrawAmount]);
+
+    const handleLockIdChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setLockId(e.target.value), []);
+    const handleWithdrawAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setWithdrawAmount(e.target.value), []);
+    const handleRecipientChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => setWithdrawRecipient(e.target.value), []);
+    const handleMaxAmount = useCallback(() => balance && setWithdrawAmount(formatEther(balance)), [balance]);
+
+    const isActuallyFinished = useMemo(() => (balance === BigInt(0) && (status === 1 || status === 2)) || isSuccess, [balance, status, isSuccess]);
+
+    const progressSteps = useMemo(() => [
+        {
+            label: "Enable Forced Withdrawal",
+            status: (status === 0 ? "upcoming" : "success") as "upcoming" | "success"
+        },
+        {
+            label: "Wait for Reset Period",
+            status: (status === 0 ? "upcoming" : (status === 1 && !canWithdraw ? "loading" : "success")) as "upcoming" | "loading" | "success"
+        },
+        {
+            label: "Execute Withdrawal",
+            status: (isActuallyFinished ? "success" : canWithdraw ? "loading" : "upcoming") as "success" | "loading" | "upcoming"
+        }
+    ], [status, canWithdraw, isActuallyFinished]);
 
     return (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-            <h2 className="text-xl font-semibold mb-6">Withdraw Assets</h2>
-
-            {/* Lock ID Input */}
+        <Card title="Withdraw Assets">
             <div className="mb-4">
-                <label className="block text-sm text-gray-400 mb-2">
-                    Resource Lock ID
-                </label>
-                <input
-                    type="text"
+                <FormInput
+                    label="Resource Lock ID"
                     value={lockId}
-                    onChange={(e) => setLockId(e.target.value)}
-                    placeholder="Enter lock ID (uint256)"
-                    className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none font-mono text-sm"
+                    onChange={handleLockIdChange}
+                    placeholder="Enter lock ID"
+                    helperText="The ERC6909 token ID from your deposit"
+                    className="font-mono text-sm"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                    The ERC6909 token ID from your deposit transaction
-                </p>
             </div>
 
-            {/* Lock Details Display */}
             {lockDetails && lockId && (
-                <div className="mb-6 bg-gray-800 border border-gray-700 rounded-xl p-4">
-                    <h3 className="text-sm font-medium text-gray-300 mb-3">
-                        Lock Details
-                    </h3>
-                    <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                            <span className="text-gray-400">Token:</span>
-                            <span className="font-mono text-xs">
-                                {lockDetails[0] === "0x0000000000000000000000000000000000000000"
-                                    ? "Native (ETH)"
-                                    : `${lockDetails[0].slice(0, 10)}...`}
-                            </span>
+                <div className="mb-6 space-y-4 animate-fade-in">
+                    <div className="bg-surface-input/30 border border-surface-border rounded-card overflow-hidden">
+                        <div className="bg-surface-input px-4 py-2 border-b border-surface-border flex justify-between items-center">
+                            <h3 className="text-helper font-bold text-text-secondary uppercase tracking-widest">Active Lock Parameters</h3>
                         </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-400">Allocator:</span>
-                            <span className="font-mono text-xs">
-                                {lockDetails[1].slice(0, 10)}...
-                            </span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-400">Reset Period:</span>
-                            <span>
-                                {RESET_PERIODS[lockDetails[2] as keyof typeof RESET_PERIODS]
-                                    ?.label || `Unknown (${lockDetails[2]})`}
-                            </span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-400">Scope:</span>
-                            <span>
-                                {SCOPES[lockDetails[3] as keyof typeof SCOPES] ||
-                                    `Unknown (${lockDetails[3]})`}
-                            </span>
-                        </div>
-                        <div className="flex justify-between">
-                            <span className="text-gray-400">Your Balance:</span>
-                            <span className="font-semibold text-pink-400">
-                                {balance ? formatEther(balance) : "0"} tokens
-                            </span>
+                        <div className="p-4 grid grid-cols-2 gap-x-8 gap-y-4">
+                            <div className="space-y-1">
+                                <span className="text-[10px] text-text-muted font-bold uppercase">Asset</span>
+                                <p className="text-sm font-mono truncate text-text-primary">
+                                    {lockDetails[0] === "0x0000000000000000000000000000000000000000" ? "Native (ETH)" : formatAddress(lockDetails[0])}
+                                </p>
+                            </div>
+                            <div className="space-y-1">
+                                <span className="text-[10px] text-text-muted font-bold uppercase">Network Scope</span>
+                                <p className="text-sm text-text-primary">
+                                    {SCOPES[lockDetails[3] as keyof typeof SCOPES] || `Unknown`}
+                                </p>
+                            </div>
+                            <div className="space-y-1">
+                                <span className="text-[10px] text-text-muted font-bold uppercase">Reset Delay</span>
+                                <p className="text-sm text-text-primary">
+                                    {RESET_PERIODS[lockDetails[2] as keyof typeof RESET_PERIODS]?.label || `Unknown`}
+                                </p>
+                            </div>
+                            <div className="space-y-1">
+                                <span className="text-[10px] text-text-muted font-bold uppercase">Current Balance</span>
+                                <p className="text-sm font-bold text-brand-primary">
+                                    {balance ? formatEther(balance) : "0"} ETH
+                                </p>
+                            </div>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Withdrawal Status */}
             {lockId && withdrawalStatus && (
-                <div className="mb-6 bg-gray-800 border border-gray-700 rounded-xl p-4">
-                    <div className="flex justify-between items-center mb-3">
-                        <h3 className="text-sm font-medium text-gray-300">
-                            Forced Withdrawal Status
-                        </h3>
-                        <span
-                            className={`px-3 py-1 rounded-full text-xs font-medium ${status === 0
-                                ? "bg-gray-700 text-gray-300"
-                                : status === 1
-                                    ? "bg-yellow-900/50 text-yellow-400"
-                                    : "bg-green-900/50 text-green-400"
-                                }`}
-                        >
-                            {FORCED_WITHDRAWAL_STATUS[status as keyof typeof FORCED_WITHDRAWAL_STATUS]}
-                        </span>
+                <div className="mb-8 space-y-8 animate-fade-in">
+                    <div className="px-2">
+                        <TransactionProgress steps={progressSteps} />
                     </div>
-                    {status === 1 && (
-                        <p className="text-xs text-gray-400">
-                            Withdrawable at:{" "}
-                            {new Date(withdrawableAt * 1000).toLocaleString()}
-                        </p>
-                    )}
+
+                    <div className={`relative overflow-hidden rounded-card border transition-all duration-300 ${status === 0 ? "bg-surface-input/20 border-surface-border" :
+                        status === 1 ? "bg-yellow-900/10 border-yellow-700/30" :
+                            "bg-status-success/10 border-status-success-border/30"
+                        }`}>
+                        <div className="p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-2 h-2 rounded-full ${status === 0 ? "bg-text-muted" :
+                                    status === 1 ? "bg-yellow-500 animate-pulse" :
+                                        "bg-status-success-text"
+                                    }`} />
+                                <div>
+                                    <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider leading-none mb-1">Workflow Status</p>
+                                    <h4 className={`text-sm font-bold ${status === 0 ? "text-text-secondary" :
+                                        status === 1 ? "text-yellow-400" :
+                                            "text-status-success-text"
+                                        }`}>
+                                        {FORCED_WITHDRAWAL_STATUS[status as keyof typeof FORCED_WITHDRAWAL_STATUS]}
+                                    </h4>
+                                </div>
+                            </div>
+                            {status === 1 && (
+                                <div className="text-right">
+                                    <p className="text-[10px] font-bold text-yellow-500/50 uppercase tracking-wider mb-1">Maturity Date</p>
+                                    <p className="text-xs text-yellow-400/80 font-mono">
+                                        {new Date(withdrawableAt * 1000).toLocaleTimeString()}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* Step 1: Enable Forced Withdrawal */}
             {status === 0 && lockId && (
-                <div className="mb-4">
-                    <button
-                        onClick={handleEnableForcedWithdrawal}
-                        disabled={!isConnected || isPending || isConfirming}
-                        className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 rounded-xl font-medium transition-colors"
+                <div className="mb-6 group">
+                    <Button
+                        onClick={handleEnable}
+                        disabled={!isConnected || isPending}
+                        loading={isPending}
+                        className="w-full !bg-yellow-600 hover:!bg-yellow-500 shadow-lg shadow-yellow-900/20"
+                        icon={<Clock className="w-4 h-4" />}
                     >
-                        {isPending || isConfirming
-                            ? "Processing..."
-                            : "Step 1: Enable Forced Withdrawal"}
-                    </button>
-                    <p className="text-xs text-gray-500 mt-2 text-center">
-                        This starts the reset period countdown
+                        Step 1: Initiate Forced Withdrawal
+                    </Button>
+                    <p className="text-[11px] text-text-hint mt-3 text-center transition-colors group-hover:text-text-secondary">
+                        Action required: Enable the withdrawal countdown to bypass the allocator.
                     </p>
                 </div>
             )}
 
-            {/* Step 2: Execute Withdrawal */}
             {(status === 1 || status === 2) && lockId && (
                 <>
-                    {/* Withdraw Amount */}
                     <div className="mb-4">
-                        <label className="block text-sm text-gray-400 mb-2">
-                            Withdraw Amount
-                        </label>
-                        <div className="relative">
-                            <input
-                                type="text"
-                                value={withdrawAmount}
-                                onChange={(e) => setWithdrawAmount(e.target.value)}
-                                placeholder="0.0"
-                                className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none"
-                            />
-                            {balance && (
-                                <button
-                                    onClick={() => setWithdrawAmount(formatEther(balance))}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-pink-400 text-sm hover:text-pink-300"
-                                >
-                                    MAX
-                                </button>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Recipient Address - THE BROWNIE POINTS FEATURE */}
-                    <div className="mb-6">
-                        <label className="block text-sm text-gray-400 mb-2">
-                            Recipient Address
-                            <span className="ml-2 text-pink-400">(★ Brownie Points!)</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={withdrawRecipient}
-                            onChange={(e) => setWithdrawRecipient(e.target.value)}
-                            placeholder={address || "Your address or a different address"}
-                            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none"
+                        <FormInput
+                            label="Withdraw Amount"
+                            value={withdrawAmount}
+                            onChange={handleWithdrawAmountChange}
+                            placeholder="0.0"
+                            rightElement={
+                                balance && (
+                                    <button
+                                        onClick={handleMaxAmount}
+                                        className="bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary text-[10px] font-bold px-2 py-1 rounded-md transition-all cursor-pointer active:scale-95"
+                                    >
+                                        MAX
+                                    </button>
+                                )
+                            }
                         />
-                        <p className="text-xs text-gray-500 mt-1">
-                            Withdraw to any address - leave empty to withdraw to yourself
-                        </p>
                     </div>
 
-                    <button
-                        onClick={handleForcedWithdrawal}
-                        disabled={
-                            !isConnected ||
-                            isPending ||
-                            isConfirming ||
-                            !withdrawAmount ||
-                            !canWithdraw
-                        }
-                        className="w-full bg-pink-600 hover:bg-pink-500 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-lg transition-colors"
-                    >
-                        {!canWithdraw
-                            ? "Wait for Reset Period"
-                            : isPending || isConfirming
-                                ? "Processing..."
-                                : "Withdraw to Recipient"}
-                    </button>
+                    <div className="mb-6">
+                        <FormInput
+                            label="Recipient Address"
+                            value={withdrawRecipient}
+                            onChange={handleRecipientChange}
+                            placeholder="Leave empty for self"
+                        />
+                    </div>
 
-                    {/* Option to cancel */}
-                    <button
-                        onClick={handleDisableForcedWithdrawal}
-                        disabled={isPending || isConfirming}
-                        className="w-full mt-3 bg-transparent border border-gray-600 hover:bg-gray-800 text-gray-400 py-3 rounded-xl font-medium transition-colors"
+                    <Button
+                        onClick={handleForcedWithdrawal}
+                        disabled={!isConnected || isPending || !withdrawAmount || !canWithdraw}
+                        loading={isPending}
+                        className="w-full"
+                        size="lg"
+                        icon={<ArrowUpFromLine className="w-5 h-5" />}
                     >
-                        Cancel Forced Withdrawal
-                    </button>
+                        {!canWithdraw ? "Waiting for Reset..." : "Withdraw Funds"}
+                    </Button>
+
+                    <Button
+                        variant="outline"
+                        onClick={handleDisable}
+                        disabled={isPending}
+                        className="w-full mt-3"
+                        icon={<XCircle className="w-4 h-4" />}
+                    >
+                        Cancel Countdown
+                    </Button>
                 </>
             )}
-
-            {/* Error/Success Messages */}
-            {error && (
-                <div className="mt-4 p-4 bg-red-900/30 border border-red-800 rounded-xl text-red-400 text-sm">
-                    Error: {error.message.split("\n")[0]}
-                </div>
-            )}
-
-            {isSuccess && hash && (
-                <div className="mt-4 p-4 bg-green-900/30 border border-green-800 rounded-xl text-green-400 text-sm">
-                    ✓ Transaction successful!
-                    <br />
-                    <a
-                        href={`https://etherscan.io/tx/${hash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline"
-                    >
-                        View transaction
-                    </a>
-                </div>
-            )}
-        </div>
+        </Card>
     );
 }

@@ -1,4 +1,4 @@
-# The Compact - Principal Engineered Frontend
+# The Compact - Frontend
 
 A production-grade Next.js 16 application for interacting with Uniswap's **The Compact** protocol on the Sepolia Testnet. This implementation emphasizes architectural resilience, performance optimization, and superior developer experience.
 

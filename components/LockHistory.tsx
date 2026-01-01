@@ -2,7 +2,7 @@
 
 import { ArrowDown, Copy, ExternalLink, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { useLockHistory, useToast } from "../hooks";
+import { useLockHistory, useToast } from "@/hooks";
 import { copyToClipboard, formatTimestamp } from "../utils";
 import { Button, Card } from "./ui";
 

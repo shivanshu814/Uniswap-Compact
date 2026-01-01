@@ -2,11 +2,11 @@
 
 import { Handshake } from "lucide-react";
 import { useState } from "react";
-import { ConnectButton } from "./components/ConnectButton";
-import { DepositForm } from "./components/DepositForm";
-import { LockHistory } from "./components/LockHistory";
-import { WithdrawForm } from "./components/WithdrawForm";
-import { THE_COMPACT_ADDRESS } from "./utils";
+import { ConnectButton } from "../components/ConnectButton";
+import { DepositForm } from "../components/DepositForm";
+import { LockHistory } from "../components/LockHistory";
+import { WithdrawForm } from "../components/WithdrawForm";
+import { THE_COMPACT_ADDRESS } from "../utils";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<"deposit" | "withdraw" | "history">("deposit");

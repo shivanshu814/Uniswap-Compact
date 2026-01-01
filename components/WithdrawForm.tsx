@@ -1,10 +1,10 @@
 "use client";
 
+import { useWithdraw } from "@/hooks";
 import { ArrowUpFromLine, Clock, XCircle } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount, useReadContract } from "wagmi";
-import { useWithdraw } from "../hooks";
 import {
     FORCED_WITHDRAWAL_STATUS,
     RESET_PERIODS,

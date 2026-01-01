@@ -1,10 +1,10 @@
 "use client";
 
+import { useDeposit, useToast } from "@/hooks";
 import { ArrowDownToLine, CheckCircle, Coins } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { formatEther } from "viem";
 import { useAccount } from "wagmi";
-import { useDeposit, useToast } from "../hooks";
 import {
     RESET_PERIODS,
     copyToClipboard

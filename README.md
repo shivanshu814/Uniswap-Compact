@@ -72,12 +72,6 @@ npm install
 npm run dev
 ```
 
-## 📜 Development Workflows
-
-We've included agentic workflows for reliability:
-
-- `/build-verify`: Ensures the project maintains a 100% buildable state with zero lint errors.
-
 ## 🔗 Contract Information
 
 | Field        | Value                                        |
